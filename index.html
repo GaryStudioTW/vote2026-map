@@ -764,7 +764,8 @@ const OFFICE_ORDER=["直轄市長","縣市長","直轄市議員","縣市議員",
 const INDI_ORDER=["平地原住民議員","山地原住民議員","山地原住民區長","山地原住民區民代表"];
 
 const map=L.map('map',{zoomControl:true,attributionControl:false}).setView([23.7,120.9],7);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',{maxZoom:18,subdomains:'abcd'}).addTo(map);
+// 底圖：內政部國土測繪中心 台灣通用電子地圖（免費、免API金鑰、官方最準；頁尾已標註來源）
+L.tileLayer('https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}',{maxZoom:20,attribution:'© 內政部國土測繪中心'}).addTo(map);
 
 // 縮放範圍：只框台灣本島＋主要離島（金門/馬祖/澎湖/蘭嶼/綠島），排除高雄轄下的南沙太平島、東沙島，
 // 以免整張地圖被拉到南海。被排除的島嶼仍會畫在地圖上、仍可點選，只是不影響自動縮放範圍。
