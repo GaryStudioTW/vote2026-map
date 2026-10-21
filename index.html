@@ -714,6 +714,24 @@ svg.leaflet-image-layer.leaflet-interactive path {
   #search .sg{display:grid;grid-template-columns:1fr 1fr;gap:6px}
   #search select{width:100%;padding:7px 8px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:13px;background:#fff;color:var(--ink)}
   #search select:disabled{background:#f5f6f8;color:#9aa1ad}
+  #search .ssub{font-size:11.5px;color:var(--sub);margin:-3px 0 8px}
+  /* 可打字的下拉框 */
+  #search .cb{position:relative}
+  #search .cbi{width:100%;padding:7px 24px 7px 8px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:13px;background:#fff;color:var(--ink);outline:none}
+  #search .cbi:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(43,92,255,.15)}
+  #search .cbi:disabled{background:#f5f6f8}
+  #search .cbi::placeholder{color:#8a93a3}
+  #search .cba{position:absolute;right:4px;top:50%;transform:translateY(-50%);color:#8a93a3;font-size:11px;cursor:pointer;padding:4px 5px;user-select:none}
+  #search .cbl{display:none;position:absolute;left:0;top:calc(100% + 4px);min-width:100%;width:max-content;max-width:260px;max-height:240px;overflow-y:auto;margin:0;padding:4px;list-style:none;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);z-index:5;-webkit-overflow-scrolling:touch}
+  #search .cb.r .cbl{left:auto;right:0}
+  #search .cb.open .cbl{display:block}
+  #search .cbl li{padding:7px 9px;border-radius:7px;font-size:13.5px;cursor:pointer;display:flex;justify-content:space-between;align-items:baseline;gap:12px;white-space:nowrap}
+  #search .cbl li:hover{background:#f3f5f9}
+  #search .cbl li.act{background:var(--brand-soft)}
+  #search .cbl li.sel{font-weight:700;color:var(--brand)}
+  #search .cbl li small{color:var(--sub);font-size:11.5px;font-weight:400}
+  #search .cbl li.none,#search .cbl li.more{color:var(--sub);font-size:12px;cursor:default;white-space:normal}
+  #search .cbl li.none:hover,#search .cbl li.more:hover{background:none}
   #search .go{margin-top:8px;width:100%;padding:8px;border:none;border-radius:9px;background:var(--brand);color:#fff;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer}
   #search .go:disabled{opacity:.4;cursor:default}
   #search .snote{font-size:11.5px;color:var(--sub);margin-top:7px;text-align:center}
@@ -770,7 +788,8 @@ svg.leaflet-image-layer.leaflet-interactive path {
     #bars{top:auto;bottom:10px;left:10px;right:10px}
     #main.pop #bars{right:10px}
     #search{left:52px;right:10px;width:auto}
-    #search select{font-size:16px}
+    #search select,#search .cbi{font-size:16px}
+    #search .cbl li{font-size:15px;padding:9px 10px}
     header{gap:8px;padding:10px 12px}
     header .lbl{display:none}
     header .crumb .far{display:none}
@@ -797,10 +816,11 @@ svg.leaflet-image-layer.leaflet-interactive path {
     </div>
     <div id="search">
       <div class="sh"><b>🔍 用地址找你的里</b><button class="x" id="sclose" title="關閉">✕</button></div>
+      <div class="ssub">每一格都可以直接打字搜尋，例如「台北」「安寮」</div>
       <div class="sg">
-        <select id="s_c"></select>
-        <select id="s_t" disabled><option value="">行政區</option></select>
-        <select id="s_v" disabled><option value="">村里</option></select>
+        <div id="s_c"></div>
+        <div id="s_t" class="r"></div>
+        <div id="s_v"></div>
         <select id="s_n" disabled><option value="">鄰（選填）</option></select>
       </div>
       <button class="go" id="s_go" disabled>查詢</button>
@@ -1140,36 +1160,117 @@ $('pclose').onclick=()=>closePanel();
 
 // ---- 地址查詢：縣市 > 行政區 > 村里 > 鄰 ----
 function resetSel(el,ph){el.innerHTML=`<option value="">${ph}</option>`;el.disabled=true;}
+
+// 可打字的下拉框：點一下展開完整清單，打字即時篩選（任何位置的字都比對、台/臺互通），
+// 上下鍵＋Enter 或直接點選；離開欄位時打的字不符合就退回原本的選擇（只剩一個符合就自動選它）
+const normTxt=s=>String(s||'').normalize('NFKC').replace(/台/g,'臺').replace(/\s+/g,'').toLowerCase();
+function makeCombo(id,ph,onPick){
+  const box=$(id),MAX=200;
+  box.classList.add('cb');
+  box.innerHTML=`<input class="cbi" type="text" placeholder="${ph}" autocomplete="off" autocapitalize="off" spellcheck="false" role="combobox" aria-expanded="false"><span class="cba" aria-hidden="true">▾</span><ul class="cbl" role="listbox"></ul>`;
+  const inp=box.querySelector('input'),ul=box.querySelector('ul');
+  const cb={items:[],value:'',cur:null,shown:[],act:-1,typed:false,
+    setItems(items){this.items=items.map(it=>({...it,key:normTxt(it.label)+'|'+normTxt(it.sub)}));},
+    set(v){const it=this.items.find(i=>i.value===v)||null;this.cur=it;this.value=it?it.value:'';inp.value=it?it.label:'';},
+    enable(on,phText){inp.disabled=!on;inp.placeholder=phText||ph;if(!on){this.items=[];this.set('');}},
+  };
+  const isOpen=()=>box.classList.contains('open');
+  const open=on=>{box.classList.toggle('open',on);inp.setAttribute('aria-expanded',on);};
+  function scrollAct(){
+    const el=ul.querySelector('li.act');if(!el)return;
+    const t=el.offsetTop,b=t+el.offsetHeight;
+    if(t<ul.scrollTop)ul.scrollTop=t;else if(b>ul.scrollTop+ul.clientHeight)ul.scrollTop=b-ul.clientHeight;
+  }
+  function render(q){
+    const nq=normTxt(q);
+    let list=cb.items;
+    if(nq){const a=[],b=[];for(const it of list){const i=it.key.indexOf(nq);if(i===0)a.push(it);else if(i>0)b.push(it);}list=a.concat(b);} // 開頭符合的排前面
+    cb.shown=list.slice(0,MAX);
+    cb.act=cb.shown.length?Math.max(0,nq?0:cb.shown.indexOf(cb.cur)):-1;
+    ul.innerHTML=cb.shown.length
+      ?cb.shown.map((it,i)=>`<li role="option" data-i="${i}" class="${i===cb.act?'act':''}${it===cb.cur?' sel':''}">${esc(it.label)}${it.sub?`<small>${esc(it.sub)}</small>`:''}</li>`).join('')
+        +(list.length>MAX?`<li class="more">還有 ${list.length-MAX} 筆，請繼續輸入縮小範圍</li>`:'')
+      :'<li class="none">找不到符合的項目</li>';
+    open(true);ul.scrollTop=0;scrollAct();
+  }
+  function pick(it){
+    const changed=(it?it.value:'')!==cb.value;
+    cb.cur=it;cb.value=it?it.value:'';inp.value=it?it.label:'';open(false);
+    if(changed)onPick(it);
+  }
+  inp.addEventListener('focus',()=>{cb.typed=false;inp.select();render('');});
+  inp.addEventListener('input',()=>{cb.typed=true;render(inp.value);});
+  inp.addEventListener('keydown',e=>{
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+      e.preventDefault();
+      if(!isOpen()){render('');return;}
+      const n=cb.shown.length;if(!n)return;
+      cb.act=(cb.act+(e.key==='ArrowDown'?1:-1)+n)%n;
+      ul.querySelectorAll('li[data-i]').forEach(li=>li.classList.toggle('act',+li.dataset.i===cb.act));
+      scrollAct();
+    }else if(e.key==='Enter'){
+      e.preventDefault();
+      if(isOpen()&&cb.shown[cb.act])pick(cb.shown[cb.act]);
+      else if(!isOpen()&&!$('s_go').disabled)doSearch(); // 清單收起時按 Enter＝查詢
+    }else if(e.key==='Escape'){inp.value=cb.cur?cb.cur.label:'';open(false);}
+  });
+  inp.addEventListener('blur',()=>{
+    if(!isOpen())return;
+    const nq=normTxt(inp.value);
+    if(!nq){pick(null);return;}
+    const exact=cb.items.filter(i=>normTxt(i.label)===nq);
+    if(exact.length===1){pick(exact[0]);return;}
+    if(cb.typed&&cb.shown.length===1){pick(cb.shown[0]);return;}
+    inp.value=cb.cur?cb.cur.label:'';open(false);
+  });
+  ul.addEventListener('mousedown',e=>e.preventDefault()); // 點清單時不讓輸入框失焦
+  ul.addEventListener('click',e=>{const li=e.target.closest('li[data-i]');if(li)pick(cb.shown[+li.dataset.i]);});
+  box.querySelector('.cba').addEventListener('mousedown',e=>{
+    e.preventDefault();if(inp.disabled)return;
+    if(document.activeElement===inp&&isOpen())open(false);else if(document.activeElement===inp)render('');else inp.focus();
+  });
+  return cb;
+}
+
+let cC,cT,cV;
 function initSearch(){
-  $('s_c').innerHTML='<option value="">縣市</option>'+COUNTY_ORDER.map(c=>`<option>${c}</option>`).join('');
-  $('s_c').onchange=()=>sFillTowns($('s_c').value);
-  $('s_t').onchange=()=>sFillVills();
-  $('s_v').onchange=()=>sFillNb();
+  cC=makeCombo('s_c','縣市',it=>sCounty(it?it.value:''));
+  cT=makeCombo('s_t','行政區',it=>sTown());
+  cV=makeCombo('s_v','村里',it=>sVill(it));
+  cC.setItems(COUNTY_ORDER.map(c=>({value:c,label:c})));
+  cT.enable(false);cV.enable(false);
   $('s_go').onclick=doSearch;
   $('sclose').onclick=hideSearch;
   $('sbtn').onclick=()=>$('search').classList.contains('open')?hideSearch():showSearch();
 }
-async function sFillTowns(c,preT,preV){
-  resetSel($('s_t'),'行政區');resetSel($('s_v'),'村里');resetSel($('s_n'),'鄰（選填）');
+async function sCounty(c,preT,preV){
+  cT.enable(false);cV.enable(false);resetSel($('s_n'),'鄰（選填）');
   $('s_go').disabled=!c;if(!c)return;
-  $('s_t').innerHTML='<option value="">載入中…</option>';
+  cT.enable(false,'載入中…');
   let C;
-  try{C=await getCounty(c);}catch(e){$('s_t').innerHTML='<option value="">載入失敗</option>';return;}
-  if($('s_c').value!==c)return;
-  $('s_t').innerHTML='<option value="">行政區</option>'+C.towns.map(t=>`<option>${esc(t)}</option>`).join('');
-  $('s_t').disabled=false;
-  if(preT){$('s_t').value=preT;sFillVills(preV);}
+  try{C=await getCounty(c);}catch(e){cT.enable(false,'載入失敗');return;}
+  if(cC.value!==c)return;
+  cT.setItems(C.towns.map(t=>({value:t,label:t})));cT.enable(true);
+  cV.enable(true);sVillItems();
+  if(preT){cT.set(preT);sVillItems();if(preV){cV.set(preV);sFillNb();}}
 }
-function sFillVills(preV){
-  resetSel($('s_v'),'村里');resetSel($('s_n'),'鄰（選填）');
-  const C=loaded[$('s_c').value],t=$('s_t').value;if(!C||!t)return;
-  $('s_v').innerHTML='<option value="">村里</option>'+(C.vbt[t]||[]).map(vc=>`<option value="${vc}">${esc(C.data.lis[vc].vill||'（無名稱）')}</option>`).join('');
-  $('s_v').disabled=false;
-  if(preV){$('s_v').value=preV;sFillNb();}
+// 村里清單：選了行政區＝只列該區；沒選＝列全縣市，後面括號標行政區
+function sVillItems(){
+  const C=loaded[cC.value];if(!C)return;
+  const t=cT.value,vcs=t?(C.vbt[t]||[]):C.towns.flatMap(x=>C.vbt[x]||[]);
+  cV.setItems(vcs.map(vc=>({value:vc,label:C.data.lis[vc].vill||'（無名稱）',sub:t?'':C.data.lis[vc].town})));
+}
+function sTown(){cV.set('');sVillItems();cV.set('');resetSel($('s_n'),'鄰（選填）');}
+function sVill(it){
+  if(it){ // 直接打里名：自動帶入行政區
+    const town=loaded[cC.value].data.lis[it.value].town;
+    if(cT.value!==town){cT.set(town);sVillItems();cV.set(it.value);}
+  }
+  sFillNb();
 }
 function sFillNb(){
   const s=$('s_n');resetSel(s,'鄰（選填）');
-  const C=loaded[$('s_c').value],vc=$('s_v').value;if(!C||!vc)return;
+  const C=loaded[cC.value],vc=cV.value;if(!C||!vc)return;
   const polls=C.data.lis[vc].poll||[];
   let max=0;
   polls.forEach(p=>{const r=parseNb(p.nb);if(r)r.forEach(([a,b])=>{if(b>max)max=b;});});
@@ -1178,7 +1279,7 @@ function sFillNb(){
   s.disabled=false;
 }
 async function doSearch(){
-  const c=$('s_c').value,t=$('s_t').value,vc=$('s_v').value,nb=+$('s_n').value||null;
+  const c=cC.value,t=cT.value,vc=cV.value,nb=+$('s_n').value||null;
   if(!c)return;
   if(curCounty!==c&&!(await openCounty(c,{fit:!t})))return; // 要跳到區或里時先不縮放縣市，避免兩段縮放動畫互相吃掉
   hideSearch();
@@ -1189,7 +1290,7 @@ async function doSearch(){
 function showSearch(){
   $('search').classList.add('open');hideHint();
   // 已經在某個縣市裡，就預先帶入目前位置
-  if(curCounty&&$('s_c').value!==curCounty){$('s_c').value=curCounty;sFillTowns(curCounty,curTown,curVc);}
+  if(curCounty&&cC.value!==curCounty){cC.set(curCounty);sCounty(curCounty,curTown,curVc);}
 }
 function hideSearch(){
   $('search').classList.remove('open');
