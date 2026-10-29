@@ -726,6 +726,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
   .sbox .sx{display:none;border:none;background:#f0f2f6;width:28px;height:28px;border-radius:8px;cursor:pointer;color:var(--sub);font-size:13px;flex:0 0 auto}
   .sres{display:none;position:absolute;left:0;top:calc(100% + 6px);width:max(100%,400px);max-height:min(70vh,540px);overflow-y:auto;margin:0;padding:6px;list-style:none;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);z-index:1300;-webkit-overflow-scrolling:touch}
   .sbox.open .sres{display:block}
+  .sbox.open .sres:empty{display:none} /* 還沒輸入時不顯示下拉 */
   .sres li{padding:8px 10px;border-radius:8px;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px}
   .sres li:hover,.sres li.act{background:var(--brand-soft)}
   .sres li .sn{font-weight:700;white-space:nowrap}
@@ -836,7 +837,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
     <span class="crumb" id="crumb">點選縣市或用搜尋開始</span>
     <div class="sbox" id="sbox">
       <span class="sic" aria-hidden="true">🔍</span>
-      <input id="q" type="search" placeholder="搜尋候選人、地區或戶籍地址" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" role="combobox" aria-expanded="false" aria-label="搜尋候選人或地區">
+      <input id="q" type="search" placeholder="搜尋候選人、選區、行政區或地址" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" role="combobox" aria-expanded="false" aria-label="搜尋候選人或地區">
       <button class="sx" id="qclose" type="button" aria-label="關閉搜尋">✕</button>
       <ul class="sres" id="qres" role="listbox"></ul>
     </div>
@@ -1427,11 +1428,10 @@ function parseAddr(q){
   const withV=out.filter(r=>r.vill);
   return (withV.length?withV:out).slice(0,4);
 }
-const SEARCH_TIP='<li class="tip">可以搜尋：<br>・<b>候選人</b>姓名，例如「李光蘭」<br>・<b>地區</b>，例如「斗六」「台北 龍泉」<br>・<b>議員選區</b>，例如「雲林 第1選區」<br>・<b>戶籍地址</b>（身分證背面，有寫里、鄰），例如「臺北市大安區龍泉里5鄰…」，直接標出你的投票所</li>';
 let sShown=[],sAct=-1,sTimer=null;
 function renderResults(){
   const q=$('q').value,ul=$('qres');
-  if(!normQ(q)){sShown=[];ul.innerHTML=SEARCH_TIP;return;}
+  if(!normQ(q)){sShown=[];ul.innerHTML='';return;}
   if(!SIDX){ul.innerHTML='<li class="tip">搜尋資料載入中…</li>';loadIndex().then(renderResults,()=>{ul.innerHTML='<li class="tip">搜尋資料載入失敗，請重新整理再試</li>';});return;}
   const r=runSearch(q);sShown=[];let h='';
   const addrs=parseAddr(q);
