@@ -1182,18 +1182,22 @@ addEventListener('resize',()=>setSheet(sheet,{animate:false}));
 // 拖曳：抓把手／標題隨時可拖；內容區在頂端往下拉、或還沒全開時往上拉，就拖面板，其餘照常捲動
 (function(){
   const p=$('panel'),body=$('p_body');let st=null;
-  function start(e,fromBody){
+  // from：'head' 把手／標題（立刻可拖）、'filter' 政黨列（左右滑＝捲動政黨，上下滑才拖面板）、'body' 內容區
+  function start(e,from){
     if(!isMobile()||sheet==='closed')return;
-    const y=e.touches[0].clientY;
-    st={y0:y,y,h:p.offsetHeight,drag:!fromBody,last:y,lt:e.timeStamp,v:0};
+    const y=e.touches[0].clientY,x=e.touches[0].clientX;
+    st={x0:x,y0:y,y,h:p.offsetHeight,from,drag:from==='head',last:y,lt:e.timeStamp,v:0};
     if(st.drag)p.style.transition='none';
   }
   function move(e){
     if(!st)return;
-    const y=e.touches[0].clientY,dy=y-st.y0;
+    const y=e.touches[0].clientY,dy=y-st.y0,dx=e.touches[0].clientX-st.x0;
     if(!st.drag){
-      if(Math.abs(dy)<6)return;
-      if((dy<0&&sheet!=='full')||(dy>0&&body.scrollTop<=0)){st.drag=true;st.y0=y;st.h=p.offsetHeight;p.style.transition='none';}
+      if(Math.max(Math.abs(dx),Math.abs(dy))<6)return;
+      if(st.from==='filter'){
+        if(Math.abs(dx)>Math.abs(dy)){st=null;return;} // 左右滑：交給政黨列自己捲動
+        st.drag=true;st.y0=y;st.h=p.offsetHeight;p.style.transition='none';
+      }else if((dy<0&&sheet!=='full')||(dy>0&&body.scrollTop<=0)){st.drag=true;st.y0=y;st.h=p.offsetHeight;p.style.transition='none';}
       else{st=null;return;}
     }
     e.preventDefault();
@@ -1214,8 +1218,9 @@ addEventListener('resize',()=>setSheet(sheet,{animate:false}));
     else best=hs.sort((a,b)=>Math.abs(a[1]-h)-Math.abs(b[1]-h))[0][0];
     setSheet(best);
   }
-  [$('p_grab'),$('p_head'),$('p_filter')].forEach(el=>el.addEventListener('touchstart',e=>start(e,false),{passive:true}));
-  body.addEventListener('touchstart',e=>start(e,true),{passive:true});
+  [$('p_grab'),$('p_head')].forEach(el=>el.addEventListener('touchstart',e=>start(e,'head'),{passive:true}));
+  $('p_filter').addEventListener('touchstart',e=>start(e,'filter'),{passive:true});
+  body.addEventListener('touchstart',e=>start(e,'body'),{passive:true});
   p.addEventListener('touchmove',move,{passive:false});
   p.addEventListener('touchend',end);p.addEventListener('touchcancel',end);
 })();
