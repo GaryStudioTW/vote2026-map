@@ -867,7 +867,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
       <div class="pbody" id="p_body"></div>
     </div>
   </div>
-  <footer><span>資料來源：中央選舉委員會、內政部國土測繪中心、<a href="https://taiwanvotes.tw/" target="_blank" rel="noopener">視覺化速查選舉資料庫</a>（CC BY 4.0）</span><span class="dotsep">　·　</span><span>本站為資訊整理，非官方網站</span></footer>
+  <footer><span>資料來源：中央選舉委員會、內政部國土測繪中心、各縣市政府門牌資料、<a href="https://taiwanvotes.tw/" target="_blank" rel="noopener">視覺化速查選舉資料庫</a>（CC BY 4.0）</span><span class="dotsep">　·　</span><span>本站為資訊整理，非官方網站</span></footer>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
@@ -909,7 +909,7 @@ const isMobile=()=>innerWidth<=640;
 const mem={};
 const store={get:k=>{try{const v=localStorage.getItem(k);if(v!=null)return v;}catch(e){}return mem[k];},set:(k,v)=>{mem[k]=v;try{localStorage.setItem(k,v);}catch(e){}}};
 
-let level='tw',curC=null,curCounty=null,curData=null,curTown=null,curVc=null,curNb=null,curParties=null;
+let level='tw',curC=null,curCounty=null,curData=null,curTown=null,curVc=null,curNb=null,curNbGuess=false,curParties=null;
 let countyLayer=null,twBounds=null,townLayer=null,liLayer=null,liColor={},navToken=0,hintTimer=null;
 const cache={},loaded={};
 
@@ -1119,7 +1119,7 @@ function openLi(vc,opt={}){
   const li=curData&&curData.lis[vc];if(!li)return;
   clearZone();
   if(li.town!==curTown)selectTown(li.town,{fit:!opt.fit});
-  curVc=vc;curNb=opt.nb||null;unnudge('v');hideHint();
+  curVc=vc;curNb=opt.nb||null;curNbGuess=!!(opt.nb&&opt.guess);unnudge('v');hideHint();
   refreshLiStyles();renderBars();updateCrumb();
   showScope('li');
   let b=null;
@@ -1128,7 +1128,7 @@ function openLi(vc,opt={}){
   else if(b&&isMobile())keepVisible(b); // 面板升起後，點的里如果被蓋住就把地圖往上推
   if(li.nogeo)showHint('2026 新設的里，地圖還沒有界線',3200);
 }
-function clearLi(){curVc=null;curNb=null;clearZone();}
+function clearLi(){curVc=null;curNb=null;curNbGuess=false;clearZone();}
 function leaveLi(){clearLi();refreshLiStyles();renderBars();updateCrumb();showScope('town');}
 
 // ---- 候選人面板：依層級顯示（縣市 → 行政區 → 里，逐層增加）----
@@ -1321,6 +1321,7 @@ function renderPanel(){
   // 有好幾個投票所、而且有鄰別資料 → 讓使用者選自己的鄰，標出該去哪一個投票所
   let maxNb=0;polls.forEach(x=>{if(x.r)x.r.forEach(([,b])=>{if(b>maxNb)maxNb=b;});});
   if(polls.length>1&&maxNb&&maxNb<=300)html+=`<div class="nbsel">我住第 <select id="nbsel"><option value="">—</option>${Array.from({length:maxNb},(_,i)=>`<option value="${i+1}"${curNb===i+1?' selected':''}>${i+1}</option>`).join('')}</select> 鄰，幫我找投票所</div>`;
+  if(curNb&&curNbGuess)html+=`<div class="note">第 ${curNb} 鄰是依各縣市門牌開放資料推定，實際請以投票通知單為準</div>`;
   if(curNb&&polls.length&&!polls.some(x=>x.mine))html+=`<div class="empty">找不到第 ${curNb} 鄰對應的投票所，請參考下方清單</div>`;
   if(polls.length){
     polls.forEach(({p,mine})=>{
@@ -1331,7 +1332,7 @@ function renderPanel(){
   html+='</section>';
   body.innerHTML=html;
   const ns=$('nbsel');
-  if(ns)ns.onchange=()=>{const top=body.scrollTop;curNb=+ns.value||null;renderPanel();body.scrollTop=top;};
+  if(ns)ns.onchange=()=>{const top=body.scrollTop;curNb=+ns.value||null;curNbGuess=false;renderPanel();body.scrollTop=top;};
 }
 
 // ---- 統一搜尋列：地區（縣市／行政區／村里／議員選區）＋候選人 ----
@@ -1365,7 +1366,7 @@ function loadIndex(){
     const townsBy={},villsBy={};
     areas.forEach(a=>{if(a.t===1)(townsBy[a.county]||=[]).push(a.town);else if(a.t===2)(villsBy[a.county+a.town]||=[]).push(a.name);});
     Object.values(townsBy).concat(Object.values(villsBy)).forEach(l=>l.sort((a,b)=>b.length-a.length)); // 長的先比，避免短名吃掉長名
-    return SIDX={areas,cands,counties:j.C,townsBy,villsBy};
+    return SIDX={areas,cands,counties:j.C,townsBy,villsBy,ad:new Set(j.ad||[])};
   }).catch(e=>{sidxP=null;throw e;});
   return sidxP;
 }
@@ -1405,6 +1406,50 @@ function matchName(list,rest,suf){ // 名稱完全相同，或去掉最後一字
   }
   return null;
 }
+// ---- 門牌對照表（各縣市門牌開放資料，address/build_addr_index.mjs 產生）：沒寫里鄰的地址也能查 ----
+// 結構：v＝["里|鄰"]；t＝{行政區:{"街路段|地區|巷|弄":[單號範圍,雙號範圍]}}，範圍 [起,迄,值] 或 [號,值]，號＝主號×1000＋之號
+const ADDR_IX={},addrP={};
+function loadAddr(c){
+  if(!addrP[c])addrP[c]=fetch('data/addr/'+encodeURIComponent(c)+'.json').then(r=>{if(!r.ok)throw new Error(r.status);return r.json();})
+    .then(j=>{const roads={};for(const [t,ks] of Object.entries(j.t)){const set=new Set();for(const k of Object.keys(ks)){const [rd,ar]=k.split('|');set.add(rd||ar);}roads[t]=[...set].filter(Boolean).sort((a,b)=>b.length-a.length);}j.roads=roads;return ADDR_IX[c]=j;})
+    .catch(e=>{delete addrP[c];throw e;});
+  return addrP[c];
+}
+const CN_D='零一二三四五六七八九';
+const cnSec=n=>n<=10?(n===10?'十':CN_D[n]):n<20?'十'+CN_D[n-10]:CN_D[Math.floor(n/10)]+'十'+(n%10?CN_D[n%10]:'');
+// 行政區後面的字 → 里鄰候選：完全對到門牌＝推定里鄰；門牌落在兩里之間＝兩個都列；沒寫號碼＝列出這條路經過的里
+function addrFind(ix,a){
+  const T=ix.t[a.town];if(!T)return [];
+  let s=String(a.rest||'').replace(/(\d+)段/,(m,d)=>cnSec(+d)+'段').replace(/[之-]/g,m=>m==='-'?'之':m);
+  const road=(ix.roads[a.town]||[]).find(r=>s.startsWith(r));if(!road)return [];
+  s=s.slice(road.length);
+  let lane='',alley='',m;
+  if((m=s.match(/^(\d+|[^\d巷弄號]{1,6})巷/))){lane=m[0];s=s.slice(m[0].length);}
+  if((m=s.match(/^(\d+)弄/))){alley=m[0];s=s.slice(m[0].length);}
+  m=s.match(/^(\d+)(?:之(\d+))?號?(?:之(\d+))?/);
+  const val=i=>{const [v,n]=ix.v[i].split('|');return {vill:v,nb:+n||0};};
+  const keys=Object.keys(T).filter(k=>{const [rd,ar]=k.split('|');return rd===road||(!rd&&ar===road);});
+  const base={kind:'addr',county:a.county,town:a.town,guess:true,road:road+lane+alley};
+  const same=keys.filter(k=>{const p=k.split('|');return p[2]===lane&&p[3]===alley;});
+  if(m&&same.length){
+    const main=+m[1],k=main*1000+(+(m[2]||m[3]||0)),out=[];
+    for(const key of same){
+      const seq=T[key][main%2].map(x=>x.length===2?[x[0],x[0],x[1]]:x);
+      const hit=seq.find(([a,b])=>k>=a&&k<=b);
+      if(hit){const v=val(hit[2]);return [{...base,...v,how:'exact',addr:road+lane+alley+m[0]}];}
+      // 不在資料裡的號碼：看前後兩段
+      const prev=[...seq].reverse().find(([,b])=>b<k),next=seq.find(([a])=>a>k);
+      const ps=[prev,next].filter(Boolean).map(x=>val(x[2]));
+      if(ps.length===2&&ps[0].vill===ps[1].vill)return [{...base,vill:ps[0].vill,nb:ps[0].nb===ps[1].nb?ps[0].nb:0,how:'near',addr:road+lane+alley+m[0]}];
+      ps.forEach(v=>{if(!out.some(o=>o.vill===v.vill))out.push({...base,vill:v.vill,how:'between',addr:road+lane+alley+m[0]});});
+    }
+    if(out.length)return out;
+  }
+  // 沒寫號碼、或巷弄對不到：列出這條路（巷弄）經過的里
+  const pool=same.length?same:keys,vs=[];
+  for(const key of pool)for(const sq of T[key])for(const x of sq){const v=val(x[x.length-1]).vill;if(!vs.includes(v))vs.push(v);}
+  return vs.slice(0,8).map(v=>({...base,vill:v,how:'road'}));
+}
 function parseAddr(q){
   let s=String(q).normalize('NFKC').replace(/台/g,'臺').replace(/[\s,，]/g,'').replace(/^\d{3,6}/,'');
   for(const [o,n] of Object.entries(OLD_COUNTY))if(s.startsWith(o)){s=n+s.slice(o.length);break;}
@@ -1419,7 +1464,7 @@ function parseAddr(q){
   const out=[];
   for(const [c,rest] of tries){
     const t=matchName(SIDX.townsBy[c]||[],rest,'市鄉鎮區');if(!t)continue;
-    const r={kind:'addr',county:c,town:t.name};
+    const r={kind:'addr',county:c,town:t.name,rest:t.rest};
     const v=matchName(SIDX.villsBy[c+t.name]||[],t.rest,'里村');
     if(v){r.vill=v.name;const m=v.rest.match(/^(\d+|[零〇一二兩三四五六七八九十百]+)鄰/);if(m&&cnNum(m[1])>0)r.nb=cnNum(m[1]);}
     out.push(r);
@@ -1434,15 +1479,25 @@ function renderResults(){
   if(!normQ(q)){sShown=[];ul.innerHTML='';return;}
   if(!SIDX){ul.innerHTML='<li class="tip">搜尋資料載入中…</li>';loadIndex().then(renderResults,()=>{ul.innerHTML='<li class="tip">搜尋資料載入失敗，請重新整理再試</li>';});return;}
   const r=runSearch(q);sShown=[];let h='';
-  const addrs=parseAddr(q);
-  if(addrs.length){
-    h+='<li class="sh">🏠 戶籍地址</li>';
-    addrs.forEach(a=>{
-      const lab=a.county+a.town+(a.vill||'')+(a.nb?` 第${a.nb}鄰`:'');
-      const sub=a.nb?'標出你的投票所':a.vill?'地址沒有寫鄰，列出這個里所有投票所':'地址沒有寫里別，無法判斷是哪個里';
-      h+=`<li data-i="${sShown.length}" role="option"><span class="sn">${esc(lab)}</span><small>${sub}</small></li>`;sShown.push(a);
+  const addrs=[];let addrWait=false;
+  for(const a of parseAddr(q)){
+    if(a.vill||!SIDX.ad.has(a.county)){addrs.push(a);continue;}
+    // 地址沒寫里：查該縣市的門牌對照表（第一次用到才下載，載完再重畫）
+    const ix=ADDR_IX[a.county];
+    if(!ix){addrWait=true;loadAddr(a.county).then(()=>{if($('q').value===q)renderResults();},()=>{});continue;}
+    const f=addrFind(ix,a);addrs.push(...(f.length?f:[a]));
+  }
+  if(addrs.length||addrWait){
+    h+='<li class="sh">🏠 地址</li>';
+    addrs.slice(0,8).forEach(a=>{
+      const lab=a.county+a.town+(a.vill||'')+(a.nb?` 第${a.nb}鄰`:'')+(a.how==='between'?'？':'');
+      const sub=a.how==='exact'?(a.nb?'依門牌資料推定，標出你的投票所':'依門牌資料推定'):a.how==='near'?'依門牌資料推定'+(a.nb?'':'（鄰無法確定）')
+        :a.how==='between'?'這個門牌介於兩個里之間，請確認':a.how==='road'?`${a.road} 經過的里（請寫門牌號碼）`
+        :a.nb?'標出你的投票所':a.vill?'地址沒有寫鄰，列出這個里所有投票所':'查不到這個地址的里別';
+      h+=`<li data-i="${sShown.length}" role="option"><span class="sn">${esc(lab)}</span><small>${esc(sub)}</small></li>`;sShown.push(a);
     });
-    if(!addrs.some(a=>a.vill))h+=`<li class="tip">請看身分證背面戶籍地址裡的「里、鄰」，或到內政部戶政司 <a href="${RIS_URL}" target="_blank" rel="noopener">門牌查詢</a> 用門牌查里鄰</li>`;
+    if(addrWait)h+='<li class="tip">查詢門牌資料中…</li>';
+    else if(!addrs.some(a=>a.vill))h+=`<li class="tip">請看身分證背面戶籍地址裡的「里、鄰」，或到內政部戶政司 <a href="${RIS_URL}" target="_blank" rel="noopener">門牌查詢</a> 用門牌查里鄰</li>`;
   }
   const more=(g,n)=>g.total>n?`<li class="more">還有 ${g.total-n} 筆，請輸入更完整的名稱</li>`:'';
   if(r.areas.list.length){h+='<li class="sh">📍 地區</li>';r.areas.list.forEach(it=>{h+=`<li data-i="${sShown.length}" role="option"><span class="sn">${esc(it.label)}</span><small>${esc(it.sub)}</small></li>`;sShown.push(it);});h+=more(r.areas,r.areas.list.length);}
@@ -1501,8 +1556,8 @@ async function pickGo(it,full){
   if(!(await openCounty(it.county,{fit:full})))return;
   const lis=curData.lis,vcOf=(off,zk)=>Object.keys(lis).find(vc=>(lis[vc].zones||{})[off]===zk);
   if(it.kind==='addr'){
-    const vc=it.vill&&Object.keys(lis).find(vc=>lis[vc].town===it.town&&lis[vc].vill===it.vill);
-    if(vc)openLi(vc,{fit:true,nb:it.nb||null});else selectTown(it.town);
+    const vn=x=>String(x||'').replace(/[\[\]]/g,''),vc=it.vill&&Object.keys(lis).find(vc=>lis[vc].town===it.town&&vn(lis[vc].vill)===vn(it.vill));
+    if(vc)openLi(vc,{fit:true,nb:it.nb||null,guess:!!it.guess});else selectTown(it.town);
     // 有鄰：面板直接捲到「你的投票所」
     if(vc&&it.nb)setTimeout(()=>{const el=document.querySelector('.poll.mine'),body=$('p_body');if(el)body.scrollTop=Math.max(0,el.offsetTop-body.offsetTop-60);},320);
     return;
