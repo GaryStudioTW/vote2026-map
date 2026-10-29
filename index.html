@@ -685,6 +685,13 @@ svg.leaflet-image-layer.leaflet-interactive path {
   header .crumb a{color:var(--brand);cursor:pointer;text-decoration:none}
   header .crumb a:hover{text-decoration:underline}
   header .crumb i{font-style:normal;color:#b3bac6}
+  /* 選舉倒數 */
+  .cd{flex:0 0 auto;position:relative;border:none;border-radius:999px;background:var(--brand);color:#fff;font-size:12.5px;padding:5px 11px;cursor:pointer;font-family:inherit;white-space:nowrap}
+  .cd b{font-size:15px;margin:0 2px;font-variant-numeric:tabular-nums}
+  .cd.hot{background:#e8590c}
+  .cd.done{background:#8a94a6}
+  .cdtip{display:none;position:absolute;top:calc(100% + 8px);right:0;background:#1a1f2b;color:#fff;font-size:12.5px;line-height:1.6;text-align:left;padding:8px 12px;border-radius:10px;box-shadow:var(--shadow);z-index:1300}
+  .cd.open .cdtip{display:block}
   .btn{border:1px solid var(--line);background:#fff;border-radius:9px;padding:6px 11px;font-size:13px;cursor:pointer;color:var(--ink);white-space:nowrap;transition:.15s;font-family:inherit}
   .btn:hover{border-color:var(--brand);color:var(--brand)}
   .btn:disabled{opacity:.4;cursor:default}
@@ -807,6 +814,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
     #search .cbl li{font-size:15px;padding:9px 10px}
     header{gap:8px;padding:10px 12px}
     header .lbl{display:none}
+    .cd{padding:5px 9px}
     header .crumb .far{display:none}
     .pfw{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
     .pfw::-webkit-scrollbar{display:none}
@@ -818,8 +826,9 @@ svg.leaflet-image-layer.leaflet-interactive path {
 <body>
 <div id="app">
   <header>
-    <span class="logo">🗳️ 2026 選舉地圖</span>
+    <span class="logo">🗳️ 2026<span class="lbl"> 選舉地圖</span></span>
     <span class="crumb" id="crumb">點選縣市或輸入地址開始</span>
+    <button class="cd" id="cd" type="button" aria-label="選舉倒數"></button>
     <button class="btn" id="sbtn" title="地址查詢">🔍<span class="lbl"> 地址查詢</span></button>
     <button class="btn" id="back" disabled title="上一層">←<span class="lbl"> 上一層</span></button>
   </header>
@@ -1453,6 +1462,20 @@ function hideSearch(){
 document.querySelectorAll('.chips').forEach(el=>el.addEventListener('wheel',e=>{
   if(Math.abs(e.deltaY)>Math.abs(e.deltaX)&&el.scrollWidth>el.clientWidth){el.scrollLeft+=e.deltaY;e.preventDefault();}
 },{passive:false}));
+
+// ---- 選舉倒數（以台北時間計算；最後 7 天變橘紅，投票日當天與結束後換文字）----
+const VOTE_DAY=Date.UTC(2026,10,28),VOTE_END_H=16;
+function renderCountdown(){
+  const now=new Date(),p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(now).map(x=>[x.type,x.value]));
+  const days=Math.round((VOTE_DAY-Date.UTC(+p.year,p.month-1,+p.day))/864e5);
+  const done=days<0||(days===0&&+p.hour>=VOTE_END_H),el=$('cd');
+  el.className='cd'+(done?' done':days<=7?' hot':'')+(el.classList.contains('open')?' open':'');
+  const txt=done?'投票已結束':days===0?'今天投票！':`<span class="lbl">倒數</span><b>${days}</b>天`;
+  el.innerHTML=txt+'<span class="cdtip">投票日：11/28（六）08:00–16:00<br>記得帶身分證、印章、投票通知單</span>';
+}
+renderCountdown();setInterval(renderCountdown,60000);
+$('cd').onclick=e=>{e.stopPropagation();$('cd').classList.toggle('open');};
+document.addEventListener('click',()=>$('cd').classList.remove('open'));
 
 init();
 </script>
