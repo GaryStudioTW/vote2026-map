@@ -679,7 +679,8 @@ svg.leaflet-image-layer.leaflet-interactive path {
   html,body{margin:0;height:100%;font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;color:var(--ink);background:var(--bg)}
   #app{position:fixed;inset:0;display:flex;flex-direction:column}
   header{position:relative;display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line);z-index:1200;box-shadow:0 1px 0 rgba(0,0,0,.02)}
-  header .logo{font-weight:800;font-size:16px;letter-spacing:.5px;white-space:nowrap}
+  header .logo{font-weight:800;font-size:16px;letter-spacing:.5px;white-space:nowrap;color:inherit;text-decoration:none;cursor:pointer}
+  header .logo:hover{color:var(--brand)}
   header .crumb{font-size:13px;color:var(--sub);display:flex;align-items:center;gap:6px;flex:1;min-width:0;overflow:hidden;white-space:nowrap}
   header .crumb b{color:var(--ink);overflow:hidden;text-overflow:ellipsis}
   header .crumb a{color:var(--brand);cursor:pointer;text-decoration:none}
@@ -792,7 +793,11 @@ svg.leaflet-image-layer.leaflet-interactive path {
   .poll .pnb{font-size:11px;color:var(--brand);margin-top:3px}
   .poll .pgo{font-size:11.5px;color:var(--brand);margin-top:6px;font-weight:700}
   .empty{color:var(--sub);font-size:13px;padding:8px 0}
-  footer{font-size:11px;color:var(--sub);text-align:center;padding:6px;background:var(--panel);border-top:1px solid var(--line);z-index:1200}
+  footer{display:flex;justify-content:center;align-items:center;gap:8px;font-size:11.5px;color:var(--sub);padding:6px 10px;background:var(--panel);border-top:1px solid var(--line);z-index:1200;white-space:nowrap}
+  footer a{color:var(--brand);text-decoration:none;font-weight:700;cursor:pointer}
+  footer a:hover{text-decoration:underline}
+  footer i{font-style:normal;color:#b3bac6}
+  .poll .pgo.ext::after{content:' ↗'}
   .spin{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(247,248,250,.7);z-index:900;font-size:14px;color:var(--sub)}
   .spin.on{display:flex}
   @media(max-width:640px){
@@ -825,15 +830,13 @@ svg.leaflet-image-layer.leaflet-interactive path {
     header .crumb .far{display:none}
     .pfw{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
     .pfw::-webkit-scrollbar{display:none}
-    footer span{display:block}
-    footer .dotsep{display:none}
   }
 </style>
 </head>
 <body>
 <div id="app">
   <header>
-    <span class="logo">🗳️ 2026 選舉地圖</span>
+    <a class="logo" id="home" href="./" title="回首頁">🗳️ 2026 選舉地圖</a>
     <span class="crumb" id="crumb">點選縣市或用搜尋開始</span>
     <div class="sbox" id="sbox">
       <span class="sic" aria-hidden="true">🔍</span>
@@ -867,7 +870,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
       <div class="pbody" id="p_body"></div>
     </div>
   </div>
-  <footer><span>資料來源：中央選舉委員會、內政部國土測繪中心、各縣市政府門牌資料、<a href="https://taiwanvotes.tw/" target="_blank" rel="noopener">視覺化速查選舉資料庫</a>（CC BY 4.0）</span><span class="dotsep">　·　</span><span>本站為資訊整理，非官方網站</span></footer>
+  <footer><a id="srcbtn" href="#" role="button">資料來源</a><i>·</i><span>本站為資訊整理，非官方網站</span></footer>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
@@ -977,7 +980,7 @@ async function init(){
 }
 
 function goHome(){
-  navToken++;clearLi();panelHidden=false;scope=null;setSheet('closed');
+  navToken++;clearLi();panelHidden=false;scope=null;about=null;setSheet('closed');
   level='tw';curC=curCounty=curData=curTown=null;
   if(townLayer){map.removeLayer(townLayer);townLayer=null;}
   if(liLayer){map.removeLayer(liLayer);liLayer=null;}
@@ -1136,6 +1139,7 @@ function leaveLi(){clearLi();refreshLiStyles();renderBars();updateCrumb();showSc
 const COUNCIL=new Set(['直轄市議員','縣市議員']);
 const NEXT={county:'行政區',town:'村里'};
 const nextOf=()=>scope.kind==='zone'?(curZone.towns.length>1?'行政區':'村里'):NEXT[scope.kind];
+let about=null; // 開著資料來源時記住原本的面板狀態
 let scope=null,panelHidden=false,sheetWant=null; // sheetWant：搜尋候選人時先指定面板要開到哪一段（地圖縮放才會避開面板）
 function scopeOf(kind){
   const vcs=kind==='county'?Object.keys(curData.lis):kind==='town'?(curC.vbt[curTown]||[]):kind==='zone'?curZone.vcs:[curVc];
@@ -1168,7 +1172,7 @@ function splitNote(off,n){
   return `<div class="note">${off}：${what}，點選${nextOf()}查看</div>`;
 }
 function showScope(kind,{state}={}){
-  scope=scopeOf(kind);curParties=null;
+  scope=scopeOf(kind);curParties=null;about=null;
   if(kind==='county'){$('p_li').textContent=curCounty;$('p_loc').textContent='縣市層級候選人';}
   else if(kind==='town'){$('p_li').textContent=curTown;$('p_loc').textContent=curCounty+'・行政區層級候選人';}
   else if(kind==='zone'){$('p_li').textContent=zoneTitle(curZone);$('p_loc').textContent=COUNCIL.has(curZone.off)?'議員選區・'+curZone.towns.join('、'):curCounty+' '+curZone.towns.join('、')+'・'+curZone.vcs.length+' 個村里';}
@@ -1209,7 +1213,34 @@ function keepVisible(b){
   const pt=map.latLngToContainerPoint(b.getCenter()),visH=$('main').clientHeight-sheetH(sheet);
   if(pt.y>visH-40)map.panBy([0,pt.y-visH/2]);
 }
-$('pclose').onclick=()=>{if(scope&&scope.kind==='li')leaveLi();else{panelHidden=true;setSheet('closed');}};
+$('pclose').onclick=()=>{if(about)closeAbout();else if(scope&&scope.kind==='li')leaveLi();else{panelHidden=true;setSheet('closed');}};
+
+// ---- 資料來源（借用候選人面板顯示；關掉後回到原本的面板內容）----
+const SOURCES=[
+  ['中央選舉委員會','https://www.cec.gov.tw/','候選人登記、號次、投開票所'],
+  ['內政部國土測繪中心','https://www.nlsc.gov.tw/','底圖（台灣通用電子地圖）、村里界圖資'],
+  ['各縣市政府門牌資料','https://data.gov.tw/','地址查里鄰（政府資料開放平臺，政府資料開放授權條款第 1 版）'],
+  ['視覺化速查選舉資料庫','https://taiwanvotes.tw/','部分號次（CC BY 4.0）'],
+];
+function openAbout(){
+  if(!about)about={sheet,panelHidden,parties:curParties};
+  $('p_li').textContent='資料來源';$('p_loc').textContent='本站為資訊整理，非官方網站';
+  $('p_peek').textContent='▲ 往上拉查看資料來源';$('p_filter').innerHTML='';
+  $('p_body').innerHTML=`<section class="g" style="--gc:#2b5cff"><div class="grp">資料來源</div>`
+    +SOURCES.map(([n,u,d])=>`<a class="poll" href="${u}" target="_blank" rel="noopener"><div class="pn">${esc(n)}</div><div class="pa">${esc(d)}</div><div class="pgo ext">${esc(u.replace(/^https:\/\/|\/$/g,''))}</div></a>`).join('')
+    +`</section><section class="g" style="--gc:#8a94a6"><div class="grp">說明</div>`
+    +`<div class="note">本站整理公開資料方便查詢，非官方網站。候選人、號次、投票所請以中央選舉委員會及各縣市選舉委員會公告為準。</div>`
+    +`<div class="note">用地址查到的鄰是依門牌資料推定，實際投票所請以投票通知單為準。</div></section>`;
+  $('p_body').scrollTop=0;panelHidden=false;
+  setSheet(isMobile()?'half':'full');
+}
+function closeAbout(){
+  const a=about;about=null;
+  if(scope){showScope(scope.kind,{state:a.sheet});if(a.parties){curParties=a.parties;renderFilter();renderPanel();}}
+  panelHidden=a.panelHidden;setSheet(scope?a.sheet:'closed');
+}
+$('srcbtn').onclick=e=>{e.preventDefault();about?closeAbout():openAbout();};
+$('home').onclick=e=>{e.preventDefault();closeSearch();goHome();};
 $('popen').onclick=()=>{if(scope)showScope(scope.kind);};
 $('p_head').addEventListener('click',e=>{if(isMobile()&&sheet==='peek'&&!e.target.closest('.x'))setSheet('half');});
 addEventListener('resize',()=>setSheet(sheet,{animate:false}));
