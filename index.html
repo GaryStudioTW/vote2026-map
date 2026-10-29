@@ -705,6 +705,8 @@ svg.leaflet-image-layer.leaflet-interactive path {
   .chip{flex:0 0 auto;background:var(--brand-soft);border:1px solid #c9d6ff;color:#1f3fb8;border-radius:16px;padding:5px 12px;font-size:12.5px;cursor:pointer;font-family:inherit;transition:.15s}
   .chip:hover{background:#dfe8ff}
   .chip.on{background:var(--brand);color:#fff;border-color:var(--brand);font-weight:700}
+  .chip.part::after{content:'部分';font-size:10px;margin-left:3px;opacity:.75}
+  .cgl{flex:0 0 auto;align-self:center;font-size:11px;font-weight:700;color:#5b6a82;padding:2px 2px 2px 8px;border-left:2px solid #c9d6ff;white-space:nowrap}
   #main.pop #bars{right:396px}
   /* 地址查詢 */
   #search{position:absolute;left:56px;top:10px;width:300px;z-index:850;background:#fff;border-radius:14px;box-shadow:var(--shadow);padding:12px;display:none}
@@ -854,7 +856,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
       <div class="pbody" id="p_body"></div>
     </div>
   </div>
-  <footer><span>資料來源：中央選舉委員會、內政部國土測繪中心</span><span class="dotsep">　·　</span><span>本站為資訊整理，非官方網站</span></footer>
+  <footer><span>資料來源：中央選舉委員會、內政部國土測繪中心；部分號次參考<a href="https://taiwanvotes.tw/" target="_blank" rel="noopener">視覺化速查選舉資料庫</a>（CC BY 4.0）</span><span class="dotsep">　·　</span><span>本站為資訊整理，非官方網站</span></footer>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
@@ -921,7 +923,14 @@ function getCounty(name){
         const gs=obj.geometries.filter(g=>g.properties.town===t);
         return gs.length?{type:'Feature',properties:{town:t},geometry:topojson.merge(topo,gs)}:null;
       }).filter(Boolean)};
-      return loaded[name]={name,data,geo,vbt,towns,tColor,townGeo};
+      // 議員選舉區 → 行政區（行政區按鈕依選舉區分組；一區跨兩個選舉區的兩組都列、標「部分」）
+      const council=[],cz={};
+      for(const t of towns){
+        const zs=new Set(vbt[t].map(vc=>(data.lis[vc].zones||{})['直轄市議員']||(data.lis[vc].zones||{})['縣市議員']).filter(Boolean));
+        zs.forEach(z=>(cz[z]||=[]).push({t,part:zs.size>1}));
+      }
+      Object.keys(cz).sort((a,b)=>a.localeCompare(b,'zh-Hant',{numeric:true})).forEach(z=>council.push({label:z.replace(name,'').replace('選舉區','選區'),towns:cz[z]}));
+      return loaded[name]={name,data,geo,vbt,towns,tColor,townGeo,council};
     })
     .catch(e=>{delete cache[name];throw e;});
   return cache[name];
@@ -1046,7 +1055,12 @@ function renderBars(){
   bars.classList.remove('hidden');
   const ct=$('chips_t');ct.innerHTML='';
   ct.appendChild(chip('全部',!curTown,()=>{if(curTown)backToCounty();}));
-  curC.towns.forEach(t=>ct.appendChild(chip(t,t===curTown,()=>{if(t!==curTown)selectTown(t);})));
+  const tchip=(t,part)=>{const b=chip(t,t===curTown,()=>{if(t!==curTown)selectTown(t);});if(part)b.classList.add('part');return b;};
+  if(curC.council.length>1)curC.council.forEach(g=>{
+    const l=document.createElement('span');l.className='cgl';l.textContent=g.label;ct.appendChild(l);
+    g.towns.forEach(({t,part})=>ct.appendChild(tchip(t,part)));
+  });
+  else curC.towns.forEach(t=>ct.appendChild(tchip(t)));
   $('row_t').classList.toggle('nudge',!seen('t'));
   const rv=$('row_v'),cv=$('chips_v');
   if(!curTown){rv.classList.add('hidden');}
