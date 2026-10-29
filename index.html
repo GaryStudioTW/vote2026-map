@@ -1097,6 +1097,7 @@ function openLi(vc,opt={}){
   if(liLayer)liLayer.eachLayer(ly=>{if(ly.feature.properties.vc===vc)b=ly.getBounds();});
   if(opt.fit)fitTo(b||townBounds(li.town),{pad:30});
   else if(b&&isMobile())keepVisible(b); // 面板升起後，點的里如果被蓋住就把地圖往上推
+  if(li.nogeo)showHint('2026 新設的里，地圖還沒有界線',3200);
 }
 function clearLi(){curVc=null;curNb=null;}
 function leaveLi(){clearLi();refreshLiStyles();renderBars();updateCrumb();showScope('town');}
