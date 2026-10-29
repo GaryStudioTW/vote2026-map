@@ -692,6 +692,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
   .cd.done{background:#8a94a6}
   .cdtip{display:none;position:absolute;top:calc(100% + 8px);right:0;background:#1a1f2b;color:#fff;font-size:12.5px;line-height:1.6;text-align:left;padding:8px 12px;border-radius:10px;box-shadow:var(--shadow);z-index:1300}
   .cd.open .cdtip{display:block}
+  .cd.onmap{display:none;position:absolute;top:10px;right:10px;z-index:820;box-shadow:0 2px 10px rgba(20,30,60,.2)}
   .btn{border:1px solid var(--line);background:#fff;border-radius:9px;padding:6px 11px;font-size:13px;cursor:pointer;color:var(--ink);white-space:nowrap;transition:.15s;font-family:inherit}
   .btn:hover{border-color:var(--brand);color:var(--brand)}
   .btn:disabled{opacity:.4;cursor:default}
@@ -814,7 +815,9 @@ svg.leaflet-image-layer.leaflet-interactive path {
     #search .cbl li{font-size:15px;padding:9px 10px}
     header{gap:8px;padding:10px 12px}
     header .lbl{display:none}
-    .cd{padding:5px 9px}
+    /* 手機：倒數膠囊改放地圖右上角（候選人面板可以蓋過它） */
+    header .cd{display:none}
+    .cd.onmap{display:block}
     header .crumb .far{display:none}
     .pfw{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
     .pfw::-webkit-scrollbar{display:none}
@@ -826,14 +829,15 @@ svg.leaflet-image-layer.leaflet-interactive path {
 <body>
 <div id="app">
   <header>
-    <span class="logo">🗳️ 2026<span class="lbl"> 選舉地圖</span></span>
+    <span class="logo">🗳️ 2026 選舉地圖</span>
     <span class="crumb" id="crumb">點選縣市或輸入地址開始</span>
-    <button class="cd" id="cd" type="button" aria-label="選舉倒數"></button>
+    <button class="cd" type="button" aria-label="選舉倒數"></button>
     <button class="btn" id="sbtn" title="地址查詢">🔍<span class="lbl"> 地址查詢</span></button>
     <button class="btn" id="back" disabled title="上一層">←<span class="lbl"> 上一層</span></button>
   </header>
   <div id="main">
     <div id="map"></div>
+    <button class="cd onmap" type="button" aria-label="選舉倒數"></button>
     <div id="bars" class="hidden">
       <div class="row" id="row_t"><span class="rowlab">行政區</span><div class="chips" id="chips_t"></div></div>
       <div class="row hidden" id="row_v"><span class="rowlab">村里</span><div class="chips" id="chips_v"></div></div>
@@ -865,7 +869,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
       <div class="pbody" id="p_body"></div>
     </div>
   </div>
-  <footer><span>資料來源：中央選舉委員會、內政部國土測繪中心；部分號次參考<a href="https://taiwanvotes.tw/" target="_blank" rel="noopener">視覺化速查選舉資料庫</a>（CC BY 4.0）</span><span class="dotsep">　·　</span><span>本站為資訊整理，非官方網站</span></footer>
+  <footer><span>資料來源：中央選舉委員會、內政部國土測繪中心、<a href="https://taiwanvotes.tw/" target="_blank" rel="noopener">視覺化速查選舉資料庫</a>（CC BY 4.0）</span><span class="dotsep">　·　</span><span>本站為資訊整理，非官方網站</span></footer>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
@@ -1468,14 +1472,17 @@ const VOTE_DAY=Date.UTC(2026,10,28),VOTE_END_H=16;
 function renderCountdown(){
   const now=new Date(),p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(now).map(x=>[x.type,x.value]));
   const days=Math.round((VOTE_DAY-Date.UTC(+p.year,p.month-1,+p.day))/864e5);
-  const done=days<0||(days===0&&+p.hour>=VOTE_END_H),el=$('cd');
-  el.className='cd'+(done?' done':days<=7?' hot':'')+(el.classList.contains('open')?' open':'');
-  const txt=done?'投票已結束':days===0?'今天投票！':`<span class="lbl">倒數</span><b>${days}</b>天`;
-  el.innerHTML=txt+'<span class="cdtip">投票日：11/28（六）08:00–16:00<br>記得帶身分證、印章、投票通知單</span>';
+  const done=days<0||(days===0&&+p.hour>=VOTE_END_H);
+  const txt=done?'投票已結束':days===0?'今天投票！':`倒數<b>${days}</b>天`;
+  // 頂部標題列（電腦）與地圖右上角（手機）各一個
+  document.querySelectorAll('.cd').forEach(el=>{
+    ['done','hot'].forEach(c=>el.classList.toggle(c,c==='done'?done:!done&&days<=7));
+    el.innerHTML=txt+'<span class="cdtip">投票日：11/28（六）08:00–16:00<br>記得帶身分證、印章、投票通知單</span>';
+  });
 }
 renderCountdown();setInterval(renderCountdown,60000);
-$('cd').onclick=e=>{e.stopPropagation();$('cd').classList.toggle('open');};
-document.addEventListener('click',()=>$('cd').classList.remove('open'));
+document.querySelectorAll('.cd').forEach(el=>el.onclick=e=>{e.stopPropagation();el.classList.toggle('open');});
+document.addEventListener('click',()=>document.querySelectorAll('.cd').forEach(el=>el.classList.remove('open')));
 
 init();
 </script>
