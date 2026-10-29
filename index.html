@@ -1120,8 +1120,8 @@ function scopeOf(kind){
   return {kind,zones,split};
 }
 // 這一層要顯示的選區卡片；新竹市東區、北區、竹北市這種一區跨兩個議員選區的，兩個都列並標「本區部分里」
-// 候選人（out＝號次公告時已不在名單：資格不符或退選，不顯示）
-const candsIn=zn=>(curData.byDistrict[zn]||[]).filter(c=>!c.out);
+// 候選人（out＝號次公告時已不在名單：資格不符或退選；stop＝選區停止選舉 → 都不顯示）
+const candsIn=zn=>(curData.byDistrict[zn]||[]).filter(c=>!c.out&&!c.stop);
 function officeList(off){
   if(!scope)return [];
   const zn=scope.zones[off];
@@ -1259,7 +1259,8 @@ function renderPanel(){
         shown+=cs.length;
         const it0=curData.indiType[r.zn],it=it0&&!off.includes(it0)?it0:''; // 職務名稱已含身分別就不重複
         const cnt=r.cs.length?(curParties?cs.length+' / '+r.cs.length:r.cs.length)+' 人':'';
-        const rows=cs.map(candRow).join('')||'<div class="empty">無登記候選人</div>';
+        const note=(curData.notes||{})[r.zn]; // 選區備註（停止選舉、重行選舉等）
+        const rows=(note?`<div class="note">${esc(note)}</div>`:'')+(cs.map(candRow).join('')||(note?'':'<div class="empty">無登記候選人</div>'));
         gh+=`<div class="office"><div class="oh"><span class="ot">${off}${it?' · '+it:''}</span><span class="zone">${esc(r.zn)}</span>${r.partial?'<span class="part">本區部分里</span>':''}<span class="cnt">${cnt}</span></div><div class="ol">${rows}</div></div>`;
       });
     });
