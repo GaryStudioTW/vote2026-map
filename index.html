@@ -836,7 +836,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
     <span class="crumb" id="crumb">點選縣市或用搜尋開始</span>
     <div class="sbox" id="sbox">
       <span class="sic" aria-hidden="true">🔍</span>
-      <input id="q" type="search" placeholder="搜尋候選人、縣市、鄉鎮、村里" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" role="combobox" aria-expanded="false" aria-label="搜尋候選人或地區">
+      <input id="q" type="search" placeholder="搜尋候選人、地區或戶籍地址" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" role="combobox" aria-expanded="false" aria-label="搜尋候選人或地區">
       <button class="sx" id="qclose" type="button" aria-label="關閉搜尋">✕</button>
       <ul class="sres" id="qres" role="listbox"></ul>
     </div>
@@ -1361,7 +1361,10 @@ function loadIndex(){
     // 原住民議員：同縣市有好幾個選區才標「第N選區」
     const nz={};cands.forEach(c=>{if(/原住民議員/.test(c.off))(nz[c.county+c.off]||=new Set()).add(c.zk);});
     cands.forEach(c=>{if(nz[c.county+c.off]&&nz[c.county+c.off].size>1){c.label+=` 第${zoneNoOf(c.zk)}選區`;c.f=normQ(c.name+c.label);}});
-    return SIDX={areas,cands};
+    const townsBy={},villsBy={};
+    areas.forEach(a=>{if(a.t===1)(townsBy[a.county]||=[]).push(a.town);else if(a.t===2)(villsBy[a.county+a.town]||=[]).push(a.name);});
+    Object.values(townsBy).concat(Object.values(villsBy)).forEach(l=>l.sort((a,b)=>b.length-a.length)); // 長的先比，避免短名吃掉長名
+    return SIDX={areas,cands,counties:j.C,townsBy,villsBy};
   }).catch(e=>{sidxP=null;throw e;});
   return sidxP;
 }
@@ -1383,13 +1386,64 @@ function runSearch(q){
     cands:pick(SIDX.cands,20,(a,b)=>(a.no==null)-(b.no==null)),
   };
 }
-const SEARCH_TIP='<li class="tip">可以搜尋：<br>・<b>候選人</b>姓名，例如「李光蘭」<br>・<b>地區</b>，例如「斗六」「台北 龍泉」<br>・<b>議員選區</b>，例如「雲林 第1選區」</li>';
+// ---- 戶籍地址 → 里、鄰（身分證背面的地址有寫里鄰；投票所正是依戶籍的里鄰分配，不需要地址定位服務）----
+// 支援：郵遞區號、台／臺、舊縣名（臺北縣→新北市等）、升格前的鄉鎮名（板橋市→板橋區）、村／里互換、國字鄰（五鄰、十二鄰）
+const OLD_COUNTY={臺北縣:'新北市',桃園縣:'桃園市',臺中縣:'臺中市',臺南縣:'臺南市',高雄縣:'高雄市'};
+const RIS_URL='https://www.ris.gov.tw/app/portal/3053';
+function cnNum(t){
+  if(/^\d+$/.test(t))return +t;
+  const d={零:0,〇:0,一:1,二:2,兩:2,三:3,四:4,五:5,六:6,七:7,八:8,九:9};let n=0,cur=0;
+  for(const ch of t){if(ch in d)cur=d[ch];else if(ch==='十'){n+=(cur||1)*10;cur=0;}else if(ch==='百'){n+=(cur||1)*100;cur=0;}else return NaN;}
+  return n+cur;
+}
+function matchName(list,rest,suf){ // 名稱完全相同，或去掉最後一字後接上舊的字尾（板橋市→板橋區、XX村→XX里）
+  for(const x of list){
+    if(rest.startsWith(x))return {name:x,rest:rest.slice(x.length)};
+    const b=x.slice(0,-1);
+    if(b.length>=(suf==='里村'?1:2)&&rest.startsWith(b)&&suf.includes(rest[b.length]))return {name:x,rest:rest.slice(b.length+1)};
+  }
+  return null;
+}
+function parseAddr(q){
+  let s=String(q).normalize('NFKC').replace(/台/g,'臺').replace(/[\s,，]/g,'').replace(/^\d{3,6}/,'');
+  for(const [o,n] of Object.entries(OLD_COUNTY))if(s.startsWith(o)){s=n+s.slice(o.length);break;}
+  if(!/[路街道巷弄號鄰段]/.test(s))return []; // 看起來像地址才解析
+  const tries=[];
+  for(const c of SIDX.counties){
+    const other=c.slice(0,2)+(c.endsWith('市')?'縣':'市');
+    if(s.startsWith(c))tries.push([c,s.slice(c.length)]);
+    else if(s.startsWith(c.slice(0,2))&&!s.startsWith(other))tries.push([c,s.slice(2)]);
+  }
+  if(!tries.length)SIDX.counties.forEach(c=>tries.push([c,s])); // 沒寫縣市：每個縣市都試
+  const out=[];
+  for(const [c,rest] of tries){
+    const t=matchName(SIDX.townsBy[c]||[],rest,'市鄉鎮區');if(!t)continue;
+    const r={kind:'addr',county:c,town:t.name};
+    const v=matchName(SIDX.villsBy[c+t.name]||[],t.rest,'里村');
+    if(v){r.vill=v.name;const m=v.rest.match(/^(\d+|[零〇一二兩三四五六七八九十百]+)鄰/);if(m&&cnNum(m[1])>0)r.nb=cnNum(m[1]);}
+    out.push(r);
+  }
+  // 有對到里的優先；沒寫縣市又對到好幾個同名行政區時，全部列出讓使用者選
+  const withV=out.filter(r=>r.vill);
+  return (withV.length?withV:out).slice(0,4);
+}
+const SEARCH_TIP='<li class="tip">可以搜尋：<br>・<b>候選人</b>姓名，例如「李光蘭」<br>・<b>地區</b>，例如「斗六」「台北 龍泉」<br>・<b>議員選區</b>，例如「雲林 第1選區」<br>・<b>戶籍地址</b>（身分證背面，有寫里、鄰），例如「臺北市大安區龍泉里5鄰…」，直接標出你的投票所</li>';
 let sShown=[],sAct=-1,sTimer=null;
 function renderResults(){
   const q=$('q').value,ul=$('qres');
   if(!normQ(q)){sShown=[];ul.innerHTML=SEARCH_TIP;return;}
   if(!SIDX){ul.innerHTML='<li class="tip">搜尋資料載入中…</li>';loadIndex().then(renderResults,()=>{ul.innerHTML='<li class="tip">搜尋資料載入失敗，請重新整理再試</li>';});return;}
   const r=runSearch(q);sShown=[];let h='';
+  const addrs=parseAddr(q);
+  if(addrs.length){
+    h+='<li class="sh">🏠 戶籍地址</li>';
+    addrs.forEach(a=>{
+      const lab=a.county+a.town+(a.vill||'')+(a.nb?` 第${a.nb}鄰`:'');
+      const sub=a.nb?'標出你的投票所':a.vill?'地址沒有寫鄰，列出這個里所有投票所':'地址沒有寫里別，無法判斷是哪個里';
+      h+=`<li data-i="${sShown.length}" role="option"><span class="sn">${esc(lab)}</span><small>${sub}</small></li>`;sShown.push(a);
+    });
+    if(!addrs.some(a=>a.vill))h+=`<li class="tip">請看身分證背面戶籍地址裡的「里、鄰」，或到內政部戶政司 <a href="${RIS_URL}" target="_blank" rel="noopener">門牌查詢</a> 用門牌查里鄰</li>`;
+  }
   const more=(g,n)=>g.total>n?`<li class="more">還有 ${g.total-n} 筆，請輸入更完整的名稱</li>`:'';
   if(r.areas.list.length){h+='<li class="sh">📍 地區</li>';r.areas.list.forEach(it=>{h+=`<li data-i="${sShown.length}" role="option"><span class="sn">${esc(it.label)}</span><small>${esc(it.sub)}</small></li>`;sShown.push(it);});h+=more(r.areas,r.areas.list.length);}
   if(r.cands.list.length){h+='<li class="sh">👤 候選人</li>';r.cands.list.forEach(it=>{h+=`<li data-i="${sShown.length}" role="option">${it.no!=null?`<span class="sno">${esc(it.no)}</span>`:''}<span class="sdot" style="background:${partyColor(it.party)}"></span><span class="sn">${esc(it.name)}</span><small>${esc(it.label)}・${esc(it.party)}</small></li>`;sShown.push(it);});h+=more(r.cands,r.cands.list.length);}
@@ -1437,7 +1491,7 @@ function initSearch(){
 
 // 選到搜尋結果：地圖跳到該範圍，面板顯示該範圍的候選人
 async function pickResult(it){
-  $('q').value=it.kind==='cand'?it.name:it.label;
+  $('q').value=it.kind==='cand'?it.name:it.kind==='addr'?$('q').value:it.label;
   closeSearch();
   const full=it.t===0||(it.kind==='cand'&&/^(直轄市長|縣市長)$/.test(it.off));
   if(it.kind==='cand'&&isMobile())sheetWant=sheet==='full'?'full':'half';
@@ -1446,6 +1500,13 @@ async function pickResult(it){
 async function pickGo(it,full){
   if(!(await openCounty(it.county,{fit:full})))return;
   const lis=curData.lis,vcOf=(off,zk)=>Object.keys(lis).find(vc=>(lis[vc].zones||{})[off]===zk);
+  if(it.kind==='addr'){
+    const vc=it.vill&&Object.keys(lis).find(vc=>lis[vc].town===it.town&&lis[vc].vill===it.vill);
+    if(vc)openLi(vc,{fit:true,nb:it.nb||null});else selectTown(it.town);
+    // 有鄰：面板直接捲到「你的投票所」
+    if(vc&&it.nb)setTimeout(()=>{const el=document.querySelector('.poll.mine'),body=$('p_body');if(el)body.scrollTop=Math.max(0,el.offsetTop-body.offsetTop-60);},320);
+    return;
+  }
   if(it.kind==='area'){
     if(it.t===1)selectTown(it.town);
     else if(it.t===2){const vc=Object.keys(lis).find(vc=>lis[vc].town===it.town&&lis[vc].vill===it.name);if(vc)openLi(vc,{fit:true});}
